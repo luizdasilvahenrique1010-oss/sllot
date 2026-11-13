@@ -29,7 +29,23 @@ cp /home/builder/.abuild/*.pub /etc/apk/keys/
 
 # scripts de build do Alpine (mesma versão do sistema)
 rm -rf /home/builder/aports
-su builder -c "git clone --depth=1 -b ${ALPINE_V#v}-stable https://gitlab.alpinelinux.org/alpine/aports.git /home/builder/aports"
+clone_aports() {
+  for br in "${ALPINE_V#v}-stable" master; do
+    for url in https://gitlab.alpinelinux.org/alpine/aports.git https://github.com/alpinelinux/aports.git; do
+      for try in 1 2 3; do
+        echo ">> git clone $url (branch $br) tentativa $try"
+        rm -rf /home/builder/aports
+        if su builder -c "git clone --depth=1 -b $br $url /home/builder/aports"; then
+          [ "$br" = master ] && echo ">> AVISO: usando a branch master (a stable nao foi encontrada)"
+          return 0
+        fi
+        sleep 10
+      done
+    done
+  done
+  return 1
+}
+clone_aports || { echo "ERRO: nao consegui baixar os scripts do Alpine (aports). Veja as linhas acima."; exit 1; }
 
 # perfil SlotOS + overlay
 cp "$KIT/mkimg.slotos.sh"        /home/builder/aports/scripts/
