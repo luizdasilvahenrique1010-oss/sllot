@@ -14,6 +14,26 @@ mkdir -p "/run/user/$UID_GAME"
 chown game "/run/user/$UID_GAME"
 chmod 700 "/run/user/$UID_GAME"
 
+# ---------- MÓDULOS DO KERNEL (drivers de som e vídeo) ----------
+KV="$(uname -r)"
+if [ ! -d "/lib/modules/$KV" ]; then
+	rc-service modloop start >/dev/null 2>&1
+	if [ ! -d "/lib/modules/$KV" ]; then
+		ML="$(ls /media/*/boot/modloop-* 2>/dev/null | head -n1)"
+		if [ -n "$ML" ]; then
+			mkdir -p /.modloop
+			mount -t squashfs -o loop "$ML" /.modloop 2>/dev/null
+			rm -rf /lib/modules
+			ln -sf /.modloop/modules /lib/modules
+		fi
+	fi
+	if [ -d "/lib/modules/$KV" ]; then
+		depmod 2>/dev/null
+		udevadm trigger --action=add 2>/dev/null
+		udevadm settle -t 20 2>/dev/null
+	fi
+fi
+
 # ---------- ÁUDIO ----------
 # espera as placas de som aparecerem (até ~10 s)
 i=0
@@ -22,6 +42,7 @@ while [ "$i" -lt 10 ] && ! grep -q '\[' /proc/asound/cards 2>/dev/null; do
 done
 
 # escolhe a placa: USB primeiro; senão a primeira que não seja só HDMI
+if [ -r /proc/asound/cards ]; then
 CARD=""
 while read -r n rest; do
 	case "$n" in ''|*[!0-9]*) continue ;; esac
@@ -50,6 +71,7 @@ for c in $(sed -n 's/^ *\([0-9][0-9]*\) \[.*/\1/p' /proc/asound/cards); do
 		amixer -c "$c" -q sset "$ctl" 100% unmute 2>/dev/null
 	done
 done
+fi
 # ---------------------------
 
 # seatd: dá ao usuário acesso à tela/teclado/mouse
@@ -75,5 +97,6 @@ exec su game -c "
 		--autoplay-policy=no-user-gesture-required \\
 		--alsa-output-device=default \\
 		--disable-translate --disable-features=Translate,TranslateUI \\
-		--password-store=basic
+		--password-store=basic \\
+		>/tmp/slotos.log 2>&1
 "
